@@ -46,11 +46,11 @@ simulator {
 }
 
 tiles {
-		standardTile("toggle", "device.status", width: 2, height: 2) {
+		standardTile("toggle", "device.status", width: 3, height: 2) {
 			state("unknown", label:'${name}', action:"device.refresh", icon:"st.Office.office9", backgroundColor:"#ffa81e")
-			state("Armed Stay", label:'${name}', action:"switch.off", icon:"st.Home.home4", backgroundColor:"#79b821", nextState:"Disarmed")
-			state("Disarmed", label:'${name}', action:"lock.lock", icon:"st.Home.home2", backgroundColor:"#a8a8a8", nextState:"Armed Away")
-			state("Armed Away", label:'${name}', action:"switch.off", icon:"st.Home.home3", backgroundColor:"#79b821", nextState:"Disarmed")
+			state("Armed Stay", label:'${name}', action:"switch.off", icon:"st.Home.home4", backgroundColor:"#79b821", nextState:"Disarming")
+			state("Disarmed", label:'${name}', action:"lock.lock", icon:"st.Home.home2", backgroundColor:"#a8a8a8", nextState:"Arming")
+			state("Armed Away", label:'${name}', action:"switch.off", icon:"st.Home.home3", backgroundColor:"#79b821", nextState:"Disarming")
             state("Arming", label:'${name}', icon:"st.Home.home4", backgroundColor:"#ffa81e")
 			state("Disarming", label:'${name}', icon:"st.Home.home2", backgroundColor:"#ffa81e")
 		}
@@ -65,6 +65,10 @@ tiles {
 		}
 		standardTile("refresh", "device.status", inactiveLabel: false, decoration: "flat") {
 			state "default", label:'', action:"refresh.refresh", icon:"st.secondary.refresh"
+		}
+        standardTile("instant", "device.status", inactiveLabel: false, decoration:"flat") {
+        	state "delay", label:'Delay', nextState: "instant"
+            state "instant", lable:'Instant', nextState: "delay"
 		}
 
 		main "toggle"
