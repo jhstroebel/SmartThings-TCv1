@@ -18,7 +18,7 @@ definition(
     namespace: "jhstroebel",
     author: "Jeremy Stroebel",
     description: "Updates TotalConnect Devices all at once",
-    category: "",
+    category: "My Apps",
     iconUrl: "https://s3.amazonaws.com/yogi/TotalConnect/150.png",
     iconX2Url: "https://s3.amazonaws.com/yogi/TotalConnect/300.png")
 
@@ -105,9 +105,16 @@ def login(token) {
 		uri: "https://rs.alarmnet.com/TC21API/TC2.asmx/AuthenticateUserLogin",
 		body: [userName: settings.userName, password: settings.password, ApplicationID: settings.applicationId, ApplicationVersion: settings.applicationVersion]
 	]	
+//Test Code
+//	def responseLogin = post(paramsLogin)
+    def responseLogin = tcCommand("AuthenticateUserLogin", [userName: settings.userName, password: settings.password, ApplicationID: settings.applicationId, ApplicationVersion: settings.applicationVersion])
+    token = responseLogin?.SessionID 
+
+/* Original Code
 	httpPost(paramsLogin) { responseLogin ->
 		token = responseLogin.data.SessionID 
 	}
+*/
 	log.debug "Smart Things has logged In. SessionID: ${token}" 
 	return token
 } // Returns token		
@@ -124,7 +131,7 @@ def logout(token) {
 	}  
 }
 
-// Gets Panel Metadata. Pulls Zone Data from same call.  Takes token & location ID as an argument.
+// Gets Panel Metadata. Pulls Zone Data from same call (does not work in testing).  Takes token & location ID as an argument.
 Map securityDeviceStatus(token, locationId) {
 	String alarmCode
     String zoneID
@@ -154,16 +161,54 @@ Map securityDeviceStatus(token, locationId) {
     return zoneMap
 } //Should return zone information
 
+Map zoneStatus(token, locationId) {
+    String zoneID
+    String zoneStatus
+    def zoneMap = [:]
+	
+    //use Ex version to get if zone is bypassable
+	def getZonesListInStateEx = [
+		uri: "https://rs.alarmnet.com/TC21API/TC2.asmx/GetZonesListInStateEx",
+		body: [SessionID: token, LocationID: settings.locationId, PartitionID: 0, ListIdentifierID: 0]
+	]
+	httpPost(getZonesListInStateEx) { responseSession -> 
+                                 def data = responseSession.data.children()
+                                 
+                                 data.Zones.ZoneStatusInfoEx.each
+        						 {
+        						 	ZoneStatusInfoEx ->
+                                        zoneID = ZoneStatusInfoEx.'@ZoneID'
+                                        zoneStatus = ZoneStatusInfoEx.'@ZoneStatus'
+                                        //bypassable = ZoneStatusInfoEx.'@CanBeBypassed' //0 means no, 1 means yes
+                                    	zoneMap.put(zoneID, zoneStatus)
+        						 } 
+    				}
+
+	log.debug "ZoneNumber: ZoneStatus " + zoneMap
+    return zoneMap
+} //Should return zone information
+
 // Gets Automation Device Status. Takes token & Automation Device ID as an argument
 Map automationDeviceStatus(token, deviceId) {
 	String switchID
 	String switchState
     Map automationMap = [:]
-	
+   
+	def responseSession = tcCommand("GetAllAutomationDeviceStatusEx", [SessionID: token, DeviceID: automationDeviceId, AdditionalInput: ''])
+    
+    responseSession.AutomationData.AutomationSwitch.SwitchInfo.each {
+    	SwitchInfo ->
+			switchID = SwitchInfo.SwitchID
+			switchState = SwitchInfo.SwitchState
+			automationMap.put(switchID,switchState)
+	}//each SwitchInfo
+
+/* Old Code
     def getAllAutomationDeviceStatusEx = [
 		uri: "https://rs.alarmnet.com/TC21API/TC2.asmx/GetAllAutomationDeviceStatusEx",
 		body: [SessionID: token, DeviceID: automationDeviceId, AdditionalInput: '']
 	]
+
 	httpPost(getAllAutomationDeviceStatusEx) { responseSession ->
         responseSession.data.AutomationData.AutomationSwitch.SwitchInfo.each
         {
@@ -173,6 +218,8 @@ Map automationDeviceStatus(token, deviceId) {
                 automationMap.put(switchID,switchState)
         }
     }
+*/ 
+
 	log.debug "SwitchID: SwitchState " + automationMap
 
 	return automationMap
@@ -325,3 +372,50 @@ def updateStatuses() {
         log.debug "Finished Updating"
     return deviceData
 }
+
+def post(Map params) {
+	def response
+    try {
+    	httpPost(params) { resp ->
+        	response = resp.data
+        }//Post Command
+        
+        state.tokenRefresh = now() //we ran a successful command, that will keep the token alive
+    } catch (SocketTimeoutException e) {
+        //identify a timeout and retry?
+		log.error "Timeout Error: $e. Retrying."
+        sendNotification("Timeout Error!", [method: "phone", phone: "3174027537"])
+        response = post(params)
+    } catch (e) {
+    	log.error "Something went wrong: $e"
+	}//try / catch for httpPost
+
+    return response
+}//post command to catch any issues and retry command?
+
+def tcCommand(String path, Map body) {
+	def response
+	def params = [
+		uri: "https://rs.alarmnet.com/TC21API/TC2.asmx/",	
+		path: path,
+    	body: body
+    ]
+
+    try {
+    	httpPost(params) { resp ->
+        	response = resp.data
+        }//Post Command
+        
+        state.tokenRefresh = now() //we ran a successful command, that will keep the token alive
+    } catch (SocketTimeoutException e) {
+        //identify a timeout and retry?
+		log.error "Timeout Error in tcCommand: $e"
+        sendNotification("Timeout Error in tcCommand", [method: "phone", phone: "3174027537"])
+		response = post(params)
+    } catch (e) {
+    	log.error "Something went wrong in tcCommand: $e"
+	}//try / catch for httpPost
+
+    return response
+}//post command to catch any issues and retry command?
+
